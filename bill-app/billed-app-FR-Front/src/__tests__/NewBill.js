@@ -1,23 +1,23 @@
 /**
- * @jest-environment jsdom
- */
-import userEvent from "@testing-library/user-event";
-import { fireEvent, screen } from "@testing-library/dom"
-import { localStorageMock } from "../__mocks__/localStorage.js";
-import { ROUTES, ROUTES_PATH } from "../constants/routes.js";
-import NewBillUI from "../views/NewBillUI.js"
-import NewBill from "../containers/NewBill.js"
-import mockedstore from "../__mocks__/store"
-import Store from "../app/Store";
-import store from '../__mocks__/store'
-import BillsUI from "../views/BillsUI.js"
+* @jest-environment jsdom
+*/
 
+import userEvent from "@testing-library/user-event";
+import { fireEvent, screen, waitFor } from "@testing-library/dom"
+import { localStorageMock } from "../__mocks__/localStorage.js";
+import NewBillUI from "../views/NewBillUI.js"
+import NewBill from "../containers/NewBill.js";
+import mockedstore from "../__mocks__/store";
+import { ROUTES, ROUTES_PATH } from "../constants/routes.js";
+import router from "../app/Router.js";
+
+jest.mock("../app/store", () => mockedstore);
 
 describe("Given I am connected as an employee", () => {
     describe("When I am on NewBill Page", () => {
         test("Then handleSubmit is called", () => {
             const mock = jest.fn();
-            jest.spyOn(NewBill.prototype, "handleSubmit").mockImplementation(mock);
+            const mySpy = jest.spyOn(NewBill.prototype, "handleSubmit").mockImplementation(mock);
             Object.defineProperty(window, "localStorage", {
                 value: localStorageMock,
             });
@@ -47,6 +47,7 @@ describe("Given I am connected as an employee", () => {
             expect(form).toBeTruthy();
             fireEvent.submit(form);
             expect(mock).toHaveBeenCalledTimes(1);
+            mySpy.mockRestore();
         });
     })
     describe("When i click on submit", () => {
@@ -61,7 +62,7 @@ describe("Given I am connected as an employee", () => {
             })
         );
         const mock = jest.fn();
-        jest.spyOn(NewBill.prototype, "updateBill").mockImplementation(mock);
+        const mySpy = jest.spyOn(NewBill.prototype, "updateBill").mockImplementation(mock);
 
         const html = NewBillUI();
         document.body.innerHTML = html;
@@ -118,17 +119,29 @@ describe("Given I am connected as an employee", () => {
             type: "Transports",
             vat: "",
         });
+        mySpy.mockRestore();
     });
+
     describe("When i select a file", () => {
         test("then handleChangeFile is called", () => {
             //PREPARATION 
             const mock = jest.fn();
             const file = new File(['hello'], 'hello.png', { type: 'image/png' });
 
-            jest.spyOn(NewBill.prototype, "handleChangeFile").mockImplementation(mock);
+            const mySpy = jest.spyOn(NewBill.prototype, "handleChangeFile").mockImplementation(mock);
             Object.defineProperty(window, "localStorage", {
                 value: localStorageMock,
             });
+
+            window.localStorage.setItem(
+                "user",
+                JSON.stringify({
+                    type: "Employee",
+                    email: "e@e"
+                })
+
+            );
+
             const html = NewBillUI();
             document.body.innerHTML = html;
 
@@ -140,59 +153,28 @@ describe("Given I am connected as an employee", () => {
             });
 
             const fileInput = document.querySelector(`input[data-testid="file"]`);
-
+            
             expect(fileInput).toBeTruthy();
             userEvent.upload(fileInput, file)
+            
             expect(mock).toHaveBeenCalledTimes(1);
+            mySpy.mockRestore();
         })
     })
     describe("When I select a file", () => {
-        test("It should change file value if the file type is wrong", () => {
-
+        test("It should check if the file type have bad extension", () => {
+          const mock = jest.fn();
+          const mySpy = jest.spyOn(NewBill.prototype, "handleChangeFile").mockImplementation(mock);
             Object.defineProperty(window, "localStorage", {
                 value: localStorageMock,
             });
-
             window.localStorage.setItem(
                 "user",
                 JSON.stringify({
                     type: "Employee",
+                    email: "e@e"
                 })
-            );
-            document.body.innerHTML = NewBillUI();
 
-            const onNavigate = (pathname) => {
-                document.body.innerHTML = ROUTES({ pathname })
-            }
-
-            const myNewBill = new NewBill({
-                document,
-                onNavigate,
-                store: mockedstore,
-                localStorage: null
-            });
-            const badFile = new File(['hello'], 'hello.pdf', { type: 'application/pdf' });
-            const customEvent = {
-                preventDefault: jest.fn(),
-                target: { files: [badFile], value: "C://fakepath/hello.pdf" },
-            }
-
-            myNewBill.handleChangeFile(customEvent);
-            userEvent.upload(screen.getByTestId("file"), badFile);
-            expect(screen.getByTestId("file").value).toBe("");
-            expect(myNewBill.fileUrl).toBe(null);
-            expect(myNewBill.fileName).toBe(null);
-        })
-        test("It should load the file", () => {
-            Object.defineProperty(window, "localStorage", {
-                value: localStorageMock,
-            });
-
-            window.localStorage.setItem(
-                "user",
-                JSON.stringify({
-                    type: "Employee",
-                })
             );
             document.body.innerHTML = NewBillUI();
             const onNavigate = (pathname) => {
@@ -201,29 +183,201 @@ describe("Given I am connected as an employee", () => {
             const myNewBill = new NewBill({
                 document,
                 onNavigate,
-                store: null,
+                store:mockedstore,
                 localStorage: null
             });
-            const file = new File(['hello'], 'hello.png', { type: 'application/png' });
+
+            const badFile = new File(['hello'], 'hello.pdf', { type: 'image/pdf' });
             const customEvent = {
-                preventDefault: jest.fn(),
-                target: { files: [file], value: "C://fakepath/hello.png" },
-            }
+                    preventDefault: jest.fn(),
+                    target: {
+                        files: [badFile],
+                        value: 'hello.pdf'
+                    }
+                }
             myNewBill.handleChangeFile(customEvent);
-            expect(myNewBill.fileUrl).toBe(null);
-            expect(myNewBill.fileName).toBe(null);
+            expect(mockedstore.bills().create).toHaveBeenCalledTimes(0);
+            mySpy.mockRestore();
         })
     })
+    describe("When I select a file", () => {
+        test("It should check if the file type have good extension", () => {
+          const mock = jest.fn();
+          const mySpy = jest.spyOn(NewBill.prototype, "handleChangeFile").mockImplementation(mock);
+            Object.defineProperty(window, "localStorage", {
+                value: localStorageMock,
+            });
+            window.localStorage.setItem(
+                "user",
+                JSON.stringify({
+                    type: "Employee",
+                    email: "e@e"
+                })
 
-    describe("Given I'm a user connected as an Employee", () => {
-        test("post bill and fails with 404 message error", async() => {
-            jest.spyOn(Store.api, 'post').mockImplementation(store.post)(() =>
-                Promise.reject(new Error("Erreur 404"))
-            )
-            const html = BillsUI({ error: "Erreur 404" })
-            document.body.innerHTML = html
-            const message = await screen.getByText(/Erreur 404/)
-            expect(message).toBeTruthy()
+            );
+            document.body.innerHTML = NewBillUI();
+            const onNavigate = (pathname) => {
+                document.body.innerHTML = ROUTES({ pathname })
+            }
+            const myNewBill = new NewBill({
+                document,
+                onNavigate,
+                store:mockedstore,
+                localStorage: null
+            });
+
+            const goodFile = new File(['hello'], 'hello.png', { type: 'image/png' });
+            const customEvent = {
+                    preventDefault: jest.fn(),
+                    target: {
+                        files: [goodFile],
+                        value: 'hello.png'
+                    }
+                }
+            myNewBill.handleChangeFile(customEvent);
+            mySpy.mockRestore();
         })
+    })
+    describe("When I navigate to Bills page", () => {
+        test("fetches bills from mock API GET", async () => {
+            // arrange
+            localStorage.setItem("user", JSON.stringify({ type: "Employee", email: "e@e" }));
+            const root = document.createElement("div")
+            root.setAttribute("id", "root")
+            document.body.innerHTML = "";
+            document.body.append(root)
+            router()
+            window.onNavigate(ROUTES_PATH.NewBill)
+
+            const fileInput = screen.getByTestId("file");
+            expect(fileInput).toBeTruthy();
+
+      const mockFile = new File(["test.jpg"], "test.jpg", {
+        type: "image/jpeg",
+      });
+      fireEvent.change(fileInput, {
+        target: {
+          files: [mockFile],
+        },
+      });
+            //assert 
+            await new Promise(process.nextTick);
+            expect(mockedstore.bills().create).toHaveBeenCalledTimes(1);
+        })       
     })
 })
+
+test("Click Post 404", async () => {
+  jest.spyOn(mockedstore, "bills");
+
+  mockedstore.bills.mockImplementationOnce(() => {
+    return {
+      create: () => {
+        return Promise.reject(new Error("Erreur 404"));
+      },
+    };
+  });
+
+  document.body.innerHTML = "";
+  Object.defineProperty(window, "localStorage", {
+    value: localStorageMock,
+  });
+
+  window.localStorage.setItem(
+    "user",
+    JSON.stringify({
+      type: "Employee",
+      email: "test@test.com",
+    })
+  );
+
+  const root = document.createElement("div");
+  root.setAttribute("id", "root");
+  document.body.append(root);
+  router();
+  window.onNavigate(ROUTES_PATH.NewBill);
+
+  await waitFor(() => screen.getByText(/Envoyer une note de frais/));
+  const fileInput = screen.getByTestId("file");
+  expect(fileInput).toBeTruthy();
+
+  // act
+
+  const mockFile = new File(["test.jpg"], "test.jpg", {
+    type: "image/jpeg",
+  });
+  fireEvent.change(fileInput, {
+    target: {
+      files: [mockFile],
+    },
+  });
+
+  await new Promise(process.nextTick);
+
+  // assert
+
+  await waitFor(() => screen.getByText(/Erreur 404/));
+});
+
+
+test("Error 500", async () => {
+    jest.spyOn(mockedstore, "bills");
+    Object.defineProperty(window, "localStorage", {
+        value: localStorageMock,
+      });
+    mockedstore.bills.mockImplementationOnce(() => {
+      return {
+        create: () => {
+          return Promise.reject(new Error("Erreur 500"));
+        },
+      };
+    });
+    window.localStorage.setItem(
+      "user",
+      JSON.stringify({
+        type: "Employee",
+        email: "e@e",
+      })
+    );
+    document.body.innerHTML = "";
+    Object.defineProperty(window, "localStorage", {
+      value: localStorageMock,
+    });
+  
+    window.localStorage.setItem(
+      "user",
+      JSON.stringify({
+        type: "Employee",
+        email: "test@test.com",
+      })
+    );
+  
+    const root = document.createElement("div");
+    root.setAttribute("id", "root");
+    document.body.append(root);
+    router();
+    window.onNavigate(ROUTES_PATH.NewBill);
+
+    await waitFor(() => screen.getByText(/Envoyer une note de frais/));
+    const fileInput = screen.getByTestId("file");
+    expect(fileInput).toBeTruthy();
+
+    // act
+
+    const mockFile = new File(["test.jpg"], "test.jpg", {
+      type: "image/jpeg",
+    });
+    fireEvent.change(fileInput, {
+      target: {
+        files: [mockFile],
+      },
+    });
+
+    await new Promise(process.nextTick);
+
+    // assert
+
+    await waitFor(() => screen.getByText(/Erreur 500/));
+  });
+
+  
